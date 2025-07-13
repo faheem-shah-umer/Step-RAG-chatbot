@@ -1,0 +1,16 @@
+{
+    "vector_store": {
+        "path": "D:/FAU/Project Thesis/LLM_in_tolerance_management_(KtmfK)/Vector_db/vstore"
+    },
+    
+    "data_sources": {
+        "pdf": {
+            "enabled": true,
+            "directory": "D:/FAU/Project Thesis/LLM_in_tolerance_management_(KtmfK)/PDFs"
+        },
+        "step": {
+            "enabled": true,
+            "directory": "D:/FAU/Project Thesis/LLM_in_tolerance_management_(KtmfK)/step_folder"
+        }
+    }
+}
