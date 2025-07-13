@@ -59,7 +59,7 @@ This project provides a Streamlit-based chatbot interface to interact with STEP 
 
 ## Notes
 
-- Requires Python 3.9+
+- Requires Python 3.10
 - Ensure vector DB path exists (or gets created)
 - Avoid re-processing same PDFs via deduplication hash logic
 
