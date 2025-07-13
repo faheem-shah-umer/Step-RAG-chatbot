@@ -1,0 +1,14 @@
+streamlit
+python-dotenv
+sentence-transformers
+requests
+langchain
+langgraph
+langchain-core
+langchain-community
+huggingface-hub
+tqdm
+scipy
+pythonocc-core
+nltk
+qdrant-client

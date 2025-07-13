@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+*.pkl
+*.log
+*.env
+openrouter.env
+step_hashes.pkl
+.vscode/
+.DS_Store
