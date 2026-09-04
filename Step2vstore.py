@@ -2,9 +2,10 @@ import os
 import json
 import hashlib
 import pickle
+from pathlib import Path
 from langchain_community.vectorstores import Qdrant
 from langchain.schema import Document
-from langchain.text_splitter import NLTKTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from OCC.Core.STEPControl import STEPControl_Reader
 from OCC.Core.BRepGProp import brepgprop
@@ -23,19 +24,20 @@ from OCC.Core.GCPnts import GCPnts_AbscissaPoint
 from tqdm import tqdm
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
 
-# Load configuration
-with open("config.json", "r") as config_file:
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+with (PROJECT_ROOT / "config.json").open("r", encoding="utf-8") as config_file:
     config = json.load(config_file)
 
-step_directory = config["data_sources"].get("step", {}).get("directory", "./STEP_FILES")
-vector_store_path = config["vector_store"]["path"]
+step_directory = str(PROJECT_ROOT / config["data_sources"].get("step", {}).get("directory", "./data/step_files"))
+vector_store_path = str(PROJECT_ROOT / config["vector_store"]["path"])
 
 os.makedirs(vector_store_path, exist_ok=True)
 
 def create_vstore():
     return Qdrant.from_documents(
         [Document(page_content='')],
-        HuggingFaceEmbeddings(),
+        HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2"),
         path=vector_store_path,
         collection_name='all',
     )
@@ -465,7 +467,7 @@ def process_text_to_vstore(text, metadata):
     doc_hash = compute_hash(text)
     metadata["doc_hash"] = doc_hash
 
-    text_splitter = NLTKTextSplitter(chunk_size=2000, chunk_overlap=100, language='english')
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=100)
     text_chunks = text_splitter.split_text(text)
     documents = [Document(page_content=chunk, metadata=metadata) for chunk in text_chunks]
     vstore.add_documents(documents)

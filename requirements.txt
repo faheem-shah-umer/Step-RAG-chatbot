@@ -6,9 +6,9 @@ langchain
 langgraph
 langchain-core
 langchain-community
+langchain-huggingface
 huggingface-hub
 tqdm
 scipy
-pythonocc-core
-nltk
 qdrant-client
+langchain-text-splitters

@@ -7,3 +7,10 @@ openrouter.env
 step_hashes.pkl
 .vscode/
 .DS_Store
+.idea/
+.streamlit/
+.pytest_cache/
+.ruff_cache/
+data/vector_store/
+data/step_files/*
+!data/step_files/.gitkeep

@@ -1,0 +1,9 @@
+name: step-rag
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pythonocc-core
+  - pip
+  - pip:
+      - -r requirements.txt
