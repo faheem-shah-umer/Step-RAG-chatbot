@@ -1,9 +1,8 @@
-# as default ask_config.json. For Custom config file run - python indexing_vstore.py --config "file_Name.json"
-
 import os
 import json
 import uuid
 import argparse
+from pathlib import Path
 from dotenv import load_dotenv
 from collections import deque
 from langchain_community.vectorstores import Qdrant
@@ -15,10 +14,11 @@ import requests
 from sentence_transformers import SentenceTransformer, util
 
 class ChatBot:
-    def __init__(self, config_path="ask_config_InterferenceClient.json"):
+    def __init__(self, config_path="ask_config_openrouter.json"):
         self.load_config(config_path)
         self.init_llm()
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+        self.evaluation_model = None
         self.conversation_history = deque(maxlen=5)
         self.initialize_vector_store()
         self.setup_workflow()
@@ -26,10 +26,16 @@ class ChatBot:
     def load_config(self, config_path):
         with open(config_path, 'r') as file:
             self.config = json.load(file)
-        self.vector_store_path = self.config['vector_store']['path']
+        configured_path = Path(self.config['vector_store']['path'])
+        self.vector_store_path = str(
+            configured_path if configured_path.is_absolute()
+            else Path(config_path).resolve().parent / configured_path
+        )
         self.answer_mode = self.config.get('answer_mode')
-        load_dotenv("openrouter.env")
+        load_dotenv(Path(config_path).resolve().parent / ".env")
         self.api_key = os.getenv("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY is missing. Copy .env.example to .env and add your key.")
 
     def init_llm(self):
         self.model_id = self.config["llm_model"]["selected"] 
@@ -97,7 +103,10 @@ class ChatBot:
         payload = {
             "model": self.model_id,
             "messages": [
-                {"role": "system", "content": "detailed thinking on"},
+                {
+                    "role": "system",
+                    "content": "You are a precise mechanical-engineering assistant. Ground answers in the supplied STEP-file context and clearly state uncertainty."
+                },
                 {"role": "user", "content": input_text}
             ],
             "temperature": 0.7,
@@ -107,11 +116,16 @@ class ChatBot:
                 "allow_fallbacks": False
             }
         }
-        response = requests.post(
-            url=self.api_url,
-            headers=self.headers,
-            data=json.dumps(payload)
-        )
+        try:
+            response = requests.post(
+                url=self.api_url,
+                headers=self.headers,
+                json=payload,
+                timeout=90,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError(f"OpenRouter request failed: {exc}") from exc
         try:
             raw = response.json()
         except Exception:
@@ -124,10 +138,10 @@ class ChatBot:
         return raw["choices"][0]["message"]["content"]
 
     def evaluate_metrics(self, question, answer, contexts):
-        # Cosine Similarity, no LLM API call
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        answer_emb = model.encode(answer, convert_to_tensor=True)
-        context_embs = model.encode(contexts, convert_to_tensor=True)
+        if self.evaluation_model is None:
+            self.evaluation_model = SentenceTransformer("all-MiniLM-L6-v2")
+        answer_emb = self.evaluation_model.encode(answer, convert_to_tensor=True)
+        context_embs = self.evaluation_model.encode(contexts, convert_to_tensor=True)
         similarity_score = util.cos_sim(answer_emb, context_embs).mean().item()
 
         # Print evaluation scores at the very bottom
@@ -176,11 +190,11 @@ class ChatBot:
         if isinstance(docs, list):
             for doc in docs:
                 metadata = getattr(doc, "metadata", {})
-                source_info = f"{metadata.get('filename', 'unknown')} (page {metadata.get('page', '?')})"
+                source_info = metadata.get('filename', 'unknown STEP file')
                 sources.append(source_info)
         else:
             metadata = getattr(docs, "metadata", {})
-            source_info = f"{metadata.get('filename', 'unknown')} (page {metadata.get('page', '?')})"
+            source_info = metadata.get('filename', 'unknown STEP file')
             sources.append(source_info)
 
         print("\nSources of retrieved chunks:")

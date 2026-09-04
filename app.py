@@ -1,11 +1,14 @@
-#streamlit run app.py --server.headless false
+import json
+from pathlib import Path
 
 import streamlit as st
-import json
-from ask_chatbot_openrouter import ChatBot  # changed import
 
-# Init session state
-# Safe Session State Initialization
+from ask_chatbot_openrouter import ChatBot
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+CONFIG_PATH = PROJECT_ROOT / "ask_config_openrouter.json"
+
 if "chatbot" not in st.session_state:
     st.session_state.chatbot = None
 if "chat_history" not in st.session_state:
@@ -19,13 +22,14 @@ if "selected_model_name" not in st.session_state:
 if "pending_query" not in st.session_state:
     st.session_state.pending_query = None
 
-st.set_page_config(page_title="LLM Chat with Context", layout="wide")
-st.title("🤖 Chat with your PDF (RAG)")
+st.set_page_config(page_title="STEP-RAG", page_icon="⚙️", layout="wide")
+st.title("⚙️ STEP-RAG")
+st.caption("Ask engineering questions grounded in the geometry of STEP CAD files.")
 if st.session_state.model_selected:
     st.markdown(f"**🧠 Model in Use:** `{st.session_state.selected_model_name}`")
 
 # Load LLM models from config
-with open("ask_config_openrouter.json", "r") as f:
+with CONFIG_PATH.open("r", encoding="utf-8") as f:
     config_data = json.load(f)
 model_options = config_data["llm_model"]["models"]
 model_names = list(model_options.keys())
@@ -36,21 +40,23 @@ if not st.session_state.model_selected:
     if st.button("✅ Confirm Model and Start Chat"):
         with st.spinner("Loading model and initializing..."):
             st.session_state.selected_model_id = model_options[selected_model_name]
-            st.session_state.chatbot = ChatBot(config_path="ask_config_openrouter.json")
-            st.session_state.chatbot.model_id = st.session_state.selected_model_id
+            try:
+                chatbot = ChatBot(config_path=str(CONFIG_PATH))
+                chatbot.model_id = st.session_state.selected_model_id
+            except (OSError, ValueError) as exc:
+                st.error(str(exc))
+                st.stop()
+            st.session_state.chatbot = chatbot
             st.session_state.model_selected = True
             st.session_state.selected_model_name = selected_model_name
         st.success(f"✅ Model '{selected_model_name}' selected. You may now chat.")
-        st.rerun()  # Ensure fresh UI
+        st.rerun()
     else:
         st.warning("Please confirm your model selection to begin.")
         st.stop()
 
-# Step 2: Chat Interface
-# Update chat_input() logic
 if query := st.chat_input("Ask a question..."):
     st.session_state.pending_query = query
-    # Show immediately in history (no waiting message)
     st.session_state.chat_history.append({
         "question": query,
         "answer": "",
@@ -59,7 +65,6 @@ if query := st.chat_input("Ask a question..."):
     })
     st.rerun()
 
-# Show chat history (user + assistant)
 for i, entry in enumerate(st.session_state.chat_history):
     with st.chat_message("user"):
         st.markdown(entry["question"])
@@ -67,14 +72,18 @@ for i, entry in enumerate(st.session_state.chat_history):
         with st.chat_message("assistant"):
             st.markdown(entry["answer"])
             if entry.get("metrics"):
-                st.markdown(entry["metrics"], unsafe_allow_html=True)
+                st.markdown(entry["metrics"])
             if entry.get("sources"):
-                st.markdown(entry["sources"], unsafe_allow_html=True)
+                st.markdown(entry["sources"])
 
-# If there's a pending query, now process it and update the last message
 if st.session_state.pending_query:
     with st.spinner("Generating answer..."):
-        result = st.session_state.chatbot.ask(st.session_state.pending_query, return_score=True)
+        try:
+            result = st.session_state.chatbot.ask(st.session_state.pending_query, return_score=True)
+        except Exception as exc:
+            st.session_state.chat_history[-1]["answer"] = f"Unable to generate an answer: {exc}"
+            st.session_state.pending_query = None
+            st.rerun()
 
     if isinstance(result, tuple):
         if len(result) == 5:
@@ -91,29 +100,22 @@ if st.session_state.pending_query:
         avg_score = k = cosine_sim = None
         sources = []
 
-    # Format result metrics
     score_display = ""
     if avg_score is not None and k is not None:
         score_display = f"`Average Vector relevance scores: {avg_score:.4f} (k={k})`"
         if cosine_sim is not None:
-            score_display += f" &nbsp; `Answer to Chunk Cosine Similarity: {cosine_sim:.4f}`"
+            score_display += f" · `Answer-context cosine similarity: {cosine_sim:.4f}`"
 
-    # Format sources
     sources_md = ""
     if sources:
-        sources_md = (
-            "<div style='color: grey; font-size: 0.85em; margin-top: 0.5em;'>"
-            "<b>References used:</b><br>"
-            + "<br>".join([f"{src}" for src in sources]) +
-            "</div>"
+        sources_md = "**References used:**\n\n" + "\n".join(
+            f"- {source}" for source in sources
         )
 
-    # Replace the last message with actual answer
     st.session_state.chat_history[-1]["answer"] = answer
     st.session_state.chat_history[-1]["metrics"] = score_display
     st.session_state.chat_history[-1]["sources"] = sources_md
 
-    # Clear the pending flag
     st.session_state.pending_query = None
 
     st.rerun()
